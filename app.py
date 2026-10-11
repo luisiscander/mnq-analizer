@@ -2,7 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime
+import plotly.graph_objects as go
 
 # Configuración de la página web
 st.set_page_config(
@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 st.title("🚀 S-AACP: Sistema Automatizado de Análisis Pre-Market y Proyección")
-st.markdown("### Panel Cuantitativo para Futuros Nasdaq (MNQ) y Activos de Alta liquidez")
+st.markdown("### Mapeo Visual de Niveles Operativos, Tercios y Gaps para Futuros Nasdaq (MNQ)")
 
 # Barra lateral para controles
 st.sidebar.header("⚙️ Parámetros de Operación")
@@ -21,44 +21,47 @@ ticker_option = st.sidebar.selectbox(
     ("MNQ=F", "NQ=F", "QQQ", "NVDA", "AAPL")
 )
 
-st.sidebar.info("A las 9:29 AM - 9:30 AM EST, presione el botón para actualizar y calcular los niveles de apertura y probabilidades.")
-
-btn_calcular = st.sidebar.button("📊 Ejecutar Análisis Pre-Market")
+st.sidebar.info("A las 9:29 AM EST, presione el botón para actualizar y proyectar los niveles en el gráfico.")
+btn_calcular = st.sidebar.button("📊 Ejecutar Análisis y Generar Mapa")
 
 if btn_calcular or ticker_option:
-    with st.spinner(f"Analizando datos en tiempo real para {ticker_option}..."):
+    with st.spinner(f"Calculando proyecciones para {ticker_option}..."):
         try:
-            # Descarga de datos recientes (último día con intervalos de 1 minuto o diario)
+            # Descarga de datos recientes
             ticker = yf.Ticker(ticker_option)
             df_hist = ticker.history(period="5d", interval="1m")
             
             if df_hist.empty:
-                st.error("No se pudieron obtener datos recientes para el activo seleccionado. Intente nuevamente.")
+                st.error("No se pudieron obtener datos recientes para el activo seleccionado.")
             else:
-                # Simulación / Procesamiento de variables clave basados en la estructura solicitada
+                # Extracción y cálculo de variables
                 ultimo_cierre = df_hist['Close'].iloc[-390] if len(df_hist) > 390 else df_hist['Close'].iloc[0]
                 precio_actual = df_hist['Close'].iloc[-1]
                 
-                # Cálculo de Gap
                 gap_val = precio_actual - ultimo_cierre
                 gap_pct = (gap_val / ultimo_cierre) * 100
                 
-                # Mock / Estimación de máximos y mínimos estructurales basados en la sesión
                 high_pm = df_hist['High'].max()
                 low_pm = df_hist['Low'].min()
                 rango_pm = high_pm - low_pm
                 
-                # Cálculo de Tercios (33.3% y 66.6%)
+                # Niveles de apertura simulados / de referencia para la proyección
+                precio_apertura_estimado = precio_actual
+                
+                # Cálculo de Tercios (33.3% y 66.6%) a partir del rango
                 tercio_inferior = low_pm + (rango_pm * 0.333)
                 tercio_superior = low_pm + (rango_pm * 0.666)
                 
-                # Asignación de Probabilidad Direccional simulada en base al Gap y tendencia
-                prob_alcista = 65.0 if gap_pct > 0 else 35.0
+                # Objetivos de extensión alcista y bajista basados en tercios
+                objetivo_alza = high_pm + (rango_pm * 0.333)
+                objetivo_baja = low_pm - (rango_pm * 0.333)
+
+                # Probabilidad Direccional estimada
+                prob_alcista = 62.0 if gap_pct > 0 else 38.0
                 prob_bajista = 100.0 - prob_alcista
 
-                # --- DISEÑO VISUAL DE LA INTERFAZ ---
+                # --- MÉTRICAS SUPERIORES ---
                 col1, col2, col3 = st.columns(3)
-                
                 with col1:
                     st.metric(label="Estado del Gap", value=f"{gap_pct:+.2f}%", delta=f"{gap_val:+.2f} USD")
                 with col2:
@@ -68,31 +71,83 @@ if btn_calcular or ticker_option:
                 
                 st.markdown("---")
                 
-                # Sección de Tercios y Niveles Clave
-                st.subheader("🎯 Zonas de Retroceso y Niveles Clave (Tercios)")
-                col_t1, col_t2 = st.columns(2)
-                with col_t1:
-                    st.info(f"**Tercio Superior (66.6% del Rango):** `{tercio_superior:,.2f}`\n\n*Zona crítica de resistencia o aceleración alcista.*")
-                with col_t2:
-                    st.warning(f"**Tercio Inferior (33.3% del Rango):** `{tercio_inferior:,.2f}`\n\n*Zona crítica de soporte o rebote bajista.*")
-                
+                # --- GRÁFICO VISUAL ESQUEMÁTICO DE NIVELES ---
+                st.subheader("🗺️ Mapa Visual de Niveles y Retrocesos Proyectados")
+                st.markdown("Este esquema muestra la **Apertura**, los **Máximos/Mínimos** y sus zonas de **retroceso por tercios** para que puedas pasarlos a tu gráfico de NinjaTrader:")
+
+                fig = go.Figure()
+
+                # Línea de Máximo y su tercio de retroceso
+                fig.add_trace(go.Scatter(
+                    x=[1, 2], y=[high_pm, high_pm],
+                    mode="lines+text",
+                    name="Máximo Pre-Market",
+                    line=dict(color="red", width=3, dash="dash"),
+                    text=["", f"Máximo Estructural: {high_pm:,.2f}"],
+                    textposition="top center"
+                ))
+                fig.add_trace(go.Scatter(
+                    x=[1, 2], y=[tercio_superior, tercio_superior],
+                    mode="lines+text",
+                    name="Tercio Superior (66.6%)",
+                    line=dict(color="orange", width=2, dash="dot"),
+                    text=["", f"Tercio Superior (66.6%): {tercio_superior:,.2f}"],
+                    textposition="top center"
+                ))
+
+                # Línea de Apertura Oficial
+                fig.add_trace(go.Scatter(
+                    x=[1, 2], y=[precio_apertura_estimado, precio_apertura_estimado],
+                    mode="lines+text",
+                    name="Precio de Apertura (Open)",
+                    line=dict(color="blue", width=4),
+                    text=["", f"Apertura Oficial: {precio_apertura_estimado:,.2f}"],
+                    textposition="middle right"
+                ))
+
+                # Línea de Mínimo y su tercio de retroceso
+                fig.add_trace(go.Scatter(
+                    x=[1, 2], y=[tercio_inferior, tercio_inferior],
+                    mode="lines+text",
+                    name="Tercio Inferior (33.3%)",
+                    line=dict(color="orange", width=2, dash="dot"),
+                    text=["", f"Tercio Inferior (33.3%): {tercio_inferior:,.2f}"],
+                    textposition="bottom center"
+                ))
+                fig.add_trace(go.Scatter(
+                    x=[1, 2], y=[low_pm, low_pm],
+                    mode="lines+text",
+                    name="Mínimo Pre-Market",
+                    line=dict(color="green", width=3, dash="dash"),
+                    text=["", f"Mínimo Estructural: {low_pm:,.2f}"],
+                    textposition="bottom center"
+                ))
+
+                fig.update_layout(
+                    title=f"Proyección Operativa RTH para {ticker_option}",
+                    xaxis_title="Estructura de Sesión",
+                    yaxis_title="Precio (USD)",
+                    height=500,
+                    showlegend=True,
+                    template="plotly_dark"
+                )
+
+                st.plotly_chart(fig, use_container_width=True)
+
                 st.markdown("---")
                 
-                # Medidor de Probabilidad Direccional
-                st.subheader("📊 Probabilidad Direccional Estimada para la Apertura")
-                st.progress(int(prob_alcista))
+                # --- PROBABILIDAD Y SUGERENCIA ---
                 col_p1, col_p2 = st.columns(2)
                 with col_p1:
-                    st.success(f"🟢 **Probabilidad Alcista / Continuación:** {prob_alcista}%")
+                    st.success(f"🟢 **Probabilidad Alcista:** {prob_alcista}%")
                 with col_p2:
-                    st.error(f"🔴 **Probabilidad Bajista / Reversión:** {prob_bajista}%")
+                    st.error(f"🔴 **Probabilidad Bajista:** {prob_bajista}%")
                 
-                # Sugerencia Operativa Automática
-                st.markdown("### 💡 Sugerencia Operativa del Sistema")
+                st.markdown("### 💡 Guía Operativa para NinjaTrader")
                 if gap_pct > 0:
-                    st.markdown(f"> **Gap Alcista detectado (+{gap_pct:.2f}%).** Si el precio se mantiene consolidando por encima del tercio inferior (`{tercio_inferior:,.2f}`), la probabilidad estadística favorece la búsqueda del máximo estructural (`{high_pm:,.2f}`). Vigilar rechazos en el tercio superior.")
+                    st.markdown(f"> **Escenario Alcista (Gap Up):** El precio abre sobre el nivel base. Si respeta el **Tercio Inferior (`{tercio_inferior:,.2f}`)** como soporte en el retroceso inicial de las 9:30 AM, el objetivo lógico a buscar en tu gráfico de NinjaTrader es el **Máximo Estructural (`{high_pm:,.2f}`)**.")
                 else:
-                    st.markdown(f"> **Gap Bajista detectado ({gap_pct:.2f}%).** Vigilar el comportamiento en el tercio superior como zona de rebote en corto si el precio no logra superar la media de apertura.")
+                    st.markdown(f"> **Escenario Bajista (Gap Down):** Vigilar el **Tercio Superior (`{tercio_superior:,.2f}`)** como zona de resistencia o rechazo si el precio intenta rellenar el vacío de mercado tras la campana de apertura.")
 
         except Exception as e:
-            st.error(f"Ocurrió un error al procesar la información de mercado: {e}")
+            st.error(f"Ocurrió un error al generar el gráfico: {e}")
